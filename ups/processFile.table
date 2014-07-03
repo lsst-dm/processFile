@@ -1,0 +1,6 @@
+setupRequired(pipe_tasks)
+
+setupOptional(matplotlib)
+
+envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
+envPrepend(PATH, ${PRODUCT_DIR}/bin)
