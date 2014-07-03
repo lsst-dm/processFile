@@ -1,0 +1,139 @@
+/**
+\file
+\mainpage lsst::processFile: Process a single fits file
+
+ - \ref processFile_introduction
+ - \ref processFile_gettingStarted
+ - \ref processFile_argparse
+ - \ref processFile_config
+ - \ref processFile_installation
+
+\section processFile_introduction Introduction
+
+processFile.py is built using four LSST Tasks:
+
+- \ref CalibrateTask_ "CalibrateTask"
+- \ref SourceDetectionTask_ "SourceDetectionTask"
+- \ref SourceDeblendTask_ "SourceDeblendTask"
+- \ref SourceMeasurementTask_ "SourceMeasurementTask"
+
+and is intended to process a flat fielded astronomical image.
+\note
+We will add the ability to handle more general data sets at some point (\em e.g. raw or multiband data;
+difference imaging).
+
+\section processFile_gettingStarted Getting Started
+
+If needs be, refer to \ref processFile_installation.
+
+To process a small flat-fielded CFHT image, writing the catalogue to \c cat.fits and the background subtracted
+image to calexp.fits, say:
+<pre>
+processFile.py data/cal-53535-i-797722_small_1.fits --outputCatalog cat.fits --outputCalexp calexp.fits
+</pre>
+this will read the data, remove cosmic rays, subtract the background, estimate the PSF, detect and deblend
+objects, and finally measure them writing the processed version of \c cal-53535-i-797722_small_1.fits to
+\c calexp.fits and the catalogue to \c cat.fits.
+
+\section processFile_argparse Command Line arguments
+
+\c processFile.py accepts a number of command line arguments and options:
+
+ - positional arguments:
+<dl>
+<dt> inputFile
+<dd> File to process
+</dl>
+ - optional arguments:
+<dl>
+<dt> -h, --help
+<dd> show this help message and exit
+<dt> --outputCatalog [OUTPUTCATALOG]
+<dd> Output catalogue
+<dt> --outputCalexp [OUTPUTCALEXP]
+<dd> Output calibrated exposure
+<dt> -c [NAME=VALUE [NAME=VALUE ...]], --config [NAME=VALUE [NAME=VALUE ...]]
+<dd> config override(s), e.g. -c foo=newfoo bar.baz=3
+<dt>  -C [CONFIGFILE [CONFIGFILE ...]], --configfile [CONFIGFILE [CONFIGFILE ...]]
+<dd> config override file(s)
+<dt>  --show SHOW [SHOW ...]
+<dd> display the specified information to stdout and quit (unless run is specified).
+<dt>  -L LOGLEVEL, --loglevel LOGLEVEL
+<dd> logging level (DEBUG, INFO, WARN, FATAL)
+<dt>  --debug, -d
+<dd> Load debug.py?
+<dt> --ds9
+<dd> Display sources on ds9
+</dl>
+
+For example,
+<pre>
+processFile.py data/cal-53535-i-797722_small_1.fits --outputCat foo.fits --outputCalexp calexp.fits \
+                -c calibrate.initialPsf.pixelScale=0.185 --show config=*initialPsf* run --ds9
+</pre>
+
+\section processFile_config Configuring processFile.py
+
+To return to that example,
+<pre>
+processFile.py data/cal-53535-i-797722_small_1.fits --outputCat foo.fits --outputCalexp calexp.fits \
+                -c calibrate.initialPsf.pixelScale=0.185 --show config=*initialPsf* run --ds9
+</pre>
+prints
+<pre>
+config.calibrate.initialPsf.pixelScale=0.185
+config.calibrate.initialPsf.model='SingleGaussian'
+config.calibrate.initialPsf.fwhm=1.0
+config.calibrate.initialPsf.size=15
+meas.algorithms.psfDeterminer WARNING: You only have 3 eigen images (you asked for 4): reducing number of eigen components
+</pre>
+and displays the processing on \c ds9 (without the \c run it would have stopped after the \c --show command;  you can also have more than one \c config=XXX arguments).
+The \c initialPsf is the one used for initial detection and cosmic ray processing (and for measurement too, if
+you specify \c -c \c calibrate.doPsf=False to disable PSF estimation).
+
+Note that the output from \c --show has a "config." prefix that you didn't specify on the command line with \c -c (if you use a configuration file with \c -C, you need to replace \c "config." with \c "root.").  For
+example I've been testing this script with some CFHT data and I'm getting tired of typing the plate scale,
+so:
+<pre>
+processFile.py -C config/cfht.py data/cal-53535-i-797722_small_1.fits --ds9
+</pre>
+(if you omit the \c -C the code will run OK, but with the wrong plate scale it'll guess the seeing incorrectly
+and treat the cores of all the stars as cosmic rays). See also config/minimal.py for other ideas.
+
+You can list all configuration options with \c --show \c config, or \em e.g.
+<pre>
+processFile.py /dev/null --show config=*.do*
+</pre>
+to at least guess at all your options for enabling/disabling things.
+
+\section processFile_installation Installing processFile
+
+Any queries or comments should be directed to the
+lsst-dm-stack-users@lsstcorp.org mailing list.
+
+<hr>
+
+If no-one's done it for you, start by 
+<a href="https://confluence.lsstcorp.org/display/LSWUG/LSST+Software+User+Guide">installing the LSST stack</a>
+
+If you checked \c processFile out from git you'll want to say
+<pre>
+cd processFile
+setup -r .
+scons
+</pre>
+
+You may also want to say
+<pre>
+eups declare -r .
+</pre>
+
+if someone installed \c processFile for you (or if you declared it to eups), just say
+<pre>
+setup processFile
+</pre>
+
+ */
+/**
+ \defgroup LSST_task_documentation Task Documentation
+ */

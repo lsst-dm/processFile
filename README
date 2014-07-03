@@ -1,0 +1,15 @@
+This is processFile, a simple front end to the LSST image processing stack.
+
+Any queries or comments should be directed to
+    lsst-dm-stack-users@lsstcorp.org
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+If no-one's done it for you, start by installing the LSST stack (see
+https://confluence.lsstcorp.org/display/LSWUG/LSST+Software+User+Guide)
+
+Then, in the directory where this README resides, issue the commands:
+setup -r .
+scons
+
+This will build the documentation in doc/html/index.html

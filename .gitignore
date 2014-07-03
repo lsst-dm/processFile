@@ -1,0 +1,9 @@
+*.pyc
+.sconf_temp
+.sconsign.dblite
+config.log
+doc/doxygen.conf
+doc/processFile.tag
+doc/html
+ups/*.cfgc
+python/lsst/processFile/version.py
