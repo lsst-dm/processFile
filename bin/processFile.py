@@ -62,7 +62,7 @@ Using such a container allows us to use the standard -c/-C/--show config options
         deblend = pexConfig.ConfigField(dtype=SourceDeblendTask.ConfigClass,
                                         doc=SourceDeblendTask.ConfigClass.__doc__)
     
-def run(config, inputFile, display=False):
+def run(config, inputFile, display=False, verbose=False):
     #
     # Create the tasks
     #
@@ -104,6 +104,9 @@ def run(config, inputFile, display=False):
         sourceDeblendTask.run(exposure, sources, exposure.getPsf())
 
     sourceMeasurementTask.measure(exposure, sources)
+
+    if verbose:
+        print "Detected %d objects" % len(sources)
 
     if display:                         # display on ds9 (see also --debug argparse option)
         if algMetadata.exists("flux_aperture_radii"):
@@ -149,6 +152,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--debug', '-d', action="store_true", help="Load debug.py?", default=False)
     parser.add_argument('--ds9', action="store_true", help="Display sources on ds9", default=False)
+    parser.add_argument('--verbose', '-v', action="store_true", help="Be chatty?", default=False)
 
     #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     #
@@ -185,7 +189,7 @@ if __name__ == "__main__":
                 self.error("log-level=%s not int or one of %s" % (args.loglevel, permitted))
         pexLog.Log.getDefaultLog().setThreshold(value)
 
-    exposure, sources = run(config, args.inputFile, display=args.ds9)
+    exposure, sources = run(config, args.inputFile, display=args.ds9, verbose=args.verbose)
 
     try:
         import lsst.processFile.version

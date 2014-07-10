@@ -64,6 +64,8 @@ objects, and finally measure them writing the processed version of \c cal-53535-
 <dd> Load debug.py?
 <dt> --ds9
 <dd> Display sources on ds9
+<dt> --verbose, -v
+<dd> Be chatty?
 </dl>
 
 For example,
