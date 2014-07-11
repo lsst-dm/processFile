@@ -62,7 +62,7 @@ Using such a container allows us to use the standard -c/-C/--show config options
         deblend = pexConfig.ConfigField(dtype=SourceDeblendTask.ConfigClass,
                                         doc=SourceDeblendTask.ConfigClass.__doc__)
     
-def run(config, inputFile, display=False, verbose=False):
+def run(config, inputFile, returnCalibSources=False, display=False, verbose=False):
     #
     # Create the tasks
     #
@@ -90,9 +90,13 @@ def run(config, inputFile, display=False, verbose=False):
     #
     # process the data
     #
+    calibSources = None                 # sources used to calibrate the frame (photom, astrom, psf)
     if config.doCalibrate:
         result = calibrateTask.run(exposure)
         exposure, sources = result.exposure, result.sources
+
+        if returnCalibSources:
+            calibSources = sources
     else:
         if not exposure.getPsf():
             calibrateTask.installInitialPsf(exposure)
@@ -127,7 +131,7 @@ def run(config, inputFile, display=False, verbose=False):
                     for i in range(s.get("flux.aperture.nProfile")):
                         ds9.dot('o', *xy, size=radii[i], ctype=ds9.YELLOW, frame=frame)
 
-    return exposure, sources
+    return exposure, calibSources, sources
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
@@ -138,6 +142,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process a fits file, detecting and measuring sources")
     parser.add_argument('inputFile', help="File to process")
     parser.add_argument('--outputCatalog', nargs="?", help="Output catalogue")
+    parser.add_argument('--outputCalibCatalog', nargs="?", help="Output catalogue of calibration objects")
     parser.add_argument('--outputCalexp', nargs="?", help="Output calibrated exposure")
 
     parser.add_argument("-c", "--config", nargs="*", action=pbArgparse.ConfigValueAction,
@@ -189,7 +194,9 @@ if __name__ == "__main__":
                 self.error("log-level=%s not int or one of %s" % (args.loglevel, permitted))
         pexLog.Log.getDefaultLog().setThreshold(value)
 
-    exposure, sources = run(config, args.inputFile, display=args.ds9, verbose=args.verbose)
+    exposure, calibSources, sources = run(config, args.inputFile,
+                                          returnCalibSources=args.outputCalibCatalog != None,
+                                          display=args.ds9, verbose=args.verbose)
 
     try:
         import lsst.processFile.version
@@ -202,5 +209,8 @@ if __name__ == "__main__":
 
     if args.outputCalexp:
         exposure.writeFits(args.outputCalexp)
+    if args.outputCalibCatalog:
+        calibSources.writeFits(args.outputCalibCatalog)
+        print calibSources.getSchema()
     if args.outputCatalog:
         sources.writeFits(args.outputCatalog)

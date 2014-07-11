@@ -50,6 +50,21 @@ objects, and finally measure them writing the processed version of \c cal-53535-
 <dd> show this help message and exit
 <dt> --outputCatalog [OUTPUTCATALOG]
 <dd> Output catalogue
+<dt> --outputCalibCatalog [OUTPUTCALIBCATALOG]
+<dd> Output catalogue of objects used for calibration (photometric and astrometric, and PSF determination)
+
+This catalogue contains fields:
+<dl>
+<dt>    calib.psf.candidate
+<dd> Flag set if the source was a candidate for PSF determination, as determined by the 'secondMoment' star
+selector.
+<dt> calib.psf.used
+<dd> Flag set if the source was actually used for PSF determination, as determined by the 'pca' PSF
+determiner.
+<dt> classification.photometric
+<dd> set if source was used in photometric calibration
+</dl>
+
 <dt> --outputCalexp [OUTPUTCALEXP]
 <dd> Output calibrated exposure
 <dt> -c [NAME=VALUE [NAME=VALUE ...]], --config [NAME=VALUE [NAME=VALUE ...]]
