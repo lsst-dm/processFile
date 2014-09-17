@@ -23,6 +23,7 @@
 #
 
 import os
+import re
 import sys
 import numpy as np
 
@@ -62,7 +63,7 @@ Using such a container allows us to use the standard -c/-C/--show config options
         deblend = pexConfig.ConfigField(dtype=SourceDeblendTask.ConfigClass,
                                         doc=SourceDeblendTask.ConfigClass.__doc__)
     
-def run(config, inputFile, returnCalibSources=False, display=False, verbose=False):
+def run(config, inputFiles, returnCalibSources=False, display=False, verbose=False):
     #
     # Create the tasks
     #
@@ -79,59 +80,70 @@ def run(config, inputFile, returnCalibSources=False, display=False, verbose=Fals
             config.doDeblend = False
     sourceMeasurementTask = SourceMeasurementTask(config=config.measurement,
                                                   schema=schema, algMetadata=algMetadata)
-    #
-    # Create the output table
-    #
-    tab = afwTable.SourceTable.make(schema)
-    #
-    # read the data
-    #
-    exposure = afwImage.ExposureF(inputFile)
-    #
-    # process the data
-    #
-    calibSources = None                 # sources used to calibrate the frame (photom, astrom, psf)
-    if config.doCalibrate:
-        result = calibrateTask.run(exposure)
-        exposure, sources = result.exposure, result.sources
 
-        if returnCalibSources:
-            calibSources = sources
-    else:
-        if not exposure.getPsf():
-            calibrateTask.installInitialPsf(exposure)
+    exposureDict = {}; calibSourcesDict = {}; sourcesDict = {}
+    
+    for inputFile in inputFiles:
+        #
+        # Create the output table
+        #
+        tab = afwTable.SourceTable.make(schema)
+        #
+        # read the data
+        #
+        if verbose:
+            print "Reading %s" % inputFile
+            
+        exposure = afwImage.ExposureF(inputFile)
+        exposureDict[inputFile] = exposure
 
-    result = sourceDetectionTask.run(tab, exposure)
-    sources = result.sources
+        # process the data
+        #
+        calibSources = None                 # sources used to calibrate the frame (photom, astrom, psf)
+        if config.doCalibrate:
+            result = calibrateTask.run(exposure)
+            exposure, sources = result.exposure, result.sources
 
-    if config.doDeblend:
-        sourceDeblendTask.run(exposure, sources, exposure.getPsf())
-
-    sourceMeasurementTask.measure(exposure, sources)
-
-    if verbose:
-        print "Detected %d objects" % len(sources)
-
-    if display:                         # display on ds9 (see also --debug argparse option)
-        if algMetadata.exists("flux_aperture_radii"):
-            radii = algMetadata.get("flux_aperture_radii")
+            if returnCalibSources:
+                calibSources = sources
         else:
-            radii = None
+            if not exposure.getPsf():
+                calibrateTask.installInitialPsf(exposure)
 
-        frame = 1
-        ds9.mtv(exposure, frame=frame)
+        calibSourcesDict[inputFile] = calibSources
 
-        with ds9.Buffering():
-            for s in sources:
-                xy = s.getCentroid()
-                ds9.dot('+', *xy, ctype=ds9.CYAN if s.get("flags.negative") else ds9.GREEN, frame=frame)
-                ds9.dot(s.getShape(), *xy, ctype=ds9.RED, frame=frame)
+        result = sourceDetectionTask.run(tab, exposure)
+        sources = result.sources
+        sourcesDict[inputFile] = sources
 
-                if radii:
-                    for i in range(s.get("flux.aperture.nProfile")):
-                        ds9.dot('o', *xy, size=radii[i], ctype=ds9.YELLOW, frame=frame)
+        if config.doDeblend:
+            sourceDeblendTask.run(exposure, sources, exposure.getPsf())
 
-    return exposure, calibSources, sources
+        sourceMeasurementTask.measure(exposure, sources)
+
+        if verbose:
+            print "Detected %d objects" % len(sources)
+
+        if display:                         # display on ds9 (see also --debug argparse option)
+            if algMetadata.exists("flux_aperture_radii"):
+                radii = algMetadata.get("flux_aperture_radii")
+            else:
+                radii = None
+
+            frame = 1
+            ds9.mtv(exposure, title=os.path.split(inputFile)[1], frame=frame)
+
+            with ds9.Buffering():
+                for s in sources:
+                    xy = s.getCentroid()
+                    ds9.dot('+', *xy, ctype=ds9.CYAN if s.get("flags.negative") else ds9.GREEN, frame=frame)
+                    ds9.dot(s.getShape(), *xy, ctype=ds9.RED, frame=frame)
+
+                    if radii:
+                        for i in range(s.get("flux.aperture.nProfile")):
+                            ds9.dot('o', *xy, size=radii[i], ctype=ds9.YELLOW, frame=frame)
+
+    return exposureDict, calibSourcesDict, sourcesDict
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
@@ -140,7 +152,11 @@ if __name__ == "__main__":
     import lsst.pipe.base.argumentParser as pbArgparse
 
     parser = argparse.ArgumentParser(description="Process a fits file, detecting and measuring sources")
-    parser.add_argument('inputFile', help="File to process")
+    parser.add_argument('inputFile', help="""File to process.
+
+If inputFile contains a %s it is taken to be a template and is expanded using the values of args.filters
+    """)
+    parser.add_argument('--filters', nargs="+", help="List of filters to process", default="")
     parser.add_argument('--outputCatalog', nargs="?", help="Output catalogue")
     parser.add_argument('--outputCalibCatalog', nargs="?", help="Output catalogue of calibration objects")
     parser.add_argument('--outputCalexp', nargs="?", help="Output calibrated exposure")
@@ -191,26 +207,46 @@ if __name__ == "__main__":
             try:
                 value = int(args.loglevel)
             except ValueError:
-                self.error("log-level=%s not int or one of %s" % (args.loglevel, permitted))
+                print >> sys.stderr, "log-level=%s not int or one of %s" % (args.loglevel, permitted)
+                sys.exit(1)
+
         pexLog.Log.getDefaultLog().setThreshold(value)
 
-    exposure, calibSources, sources = run(config, args.inputFile,
-                                          returnCalibSources=args.outputCalibCatalog != None,
-                                          display=args.ds9, verbose=args.verbose)
+    if re.search(r"%s", args.inputFile):
+        inputFiles = [args.inputFile % f for f in args.filters]
 
+        if args.outputCalexp:
+            args.outputCalexp = [args.outputCalexp % f for f in args.filters]
+        if args.outputCalibCatalog:
+            args.outputCalibCatalog = [args.outputCalibCatalog % f for f in args.filters]
+        if args.outputCatalog:
+            args.outputCatalog = [args.outputCatalog % f for f in args.filters]
+    else:
+        inputFiles = [args.inputFile]
+
+    exposureDict, calibSourcesDict, sourcesDict = run(config, inputFiles,
+                                                      returnCalibSources=args.outputCalibCatalog != None,
+                                                      display=args.ds9, verbose=args.verbose)
     try:
         import lsst.processFile.version
         version = lsst.processFile.version.__version__
     except ImportError:
         print >> sys.stderr, "Unable to deduce processFile's version -- did you run scons?"
         version = "???"
+    #
+    # Write output files
+    #
+    for i, inputFile in enumerate(inputFiles):
+        exposure = exposureDict[inputFile]
+        calibSources = calibSourcesDict[inputFile]
+        sources = sourcesDict[inputFile]
 
-    exposure.getMetadata().set("VERSION", version)
+        exposure.getMetadata().set("VERSION", version)
 
-    if args.outputCalexp:
-        exposure.writeFits(args.outputCalexp)
-    if args.outputCalibCatalog:
-        calibSources.writeFits(args.outputCalibCatalog)
-        print calibSources.getSchema()
-    if args.outputCatalog:
-        sources.writeFits(args.outputCatalog)
+        if args.outputCalexp:
+            exposure.writeFits(args.outputCalexp[i])
+        if args.outputCalibCatalog:
+            calibSources.writeFits(args.outputCalibCatalog[i])
+            print calibSources.getSchema()
+        if args.outputCatalog:
+            sources.writeFits(args.outputCatalog[i])
