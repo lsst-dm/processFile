@@ -33,6 +33,7 @@ import lsst.pex.logging            as pexLog
 import lsst.afw.coord              as afwCoord
 import lsst.afw.geom               as afwGeom
 import lsst.afw.image              as afwImage
+import lsst.afw.math               as afwMath
 import lsst.afw.table              as afwTable
 import lsst.afw.display.ds9        as ds9
 import lsst.meas.algorithms        as measAlg
@@ -51,6 +52,8 @@ class ProcessFileConfig(pexConfig.Config):
 
 Using such a container allows us to use the standard -c/-C/--show config options that pipe_base provides
 """
+    variance = pexConfig.Field(dtype=float, default=np.nan, doc = "Initial per-pixel variance (if <= 0, estimage from inputs)")
+    badPixelValue = pexConfig.Field(dtype=float, default=np.nan, doc = "Value indicating a bad pixel")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Calibrate input data?")
     calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass,
                                       doc=CalibrateTask.ConfigClass.__doc__)
@@ -97,6 +100,24 @@ def run(config, inputFiles, returnCalibSources=False, display=False, verbose=Fal
         exposure = afwImage.ExposureF(inputFile)
         exposureDict[inputFile] = exposure
 
+        if np.isfinite(config.badPixelValue):
+            mi = exposure.getMaskedImage()
+            bad = mi.getImage().getArray() == config.badPixelValue
+            mi.getMask().getArray()[bad] |= mi.getMask().getPlaneBitMask("BAD")
+            del bad; del mi
+
+        if np.isfinite(config.variance):
+            variance = config.variance
+            if variance <= 0:
+                mi = exposure.getMaskedImage()
+
+                sctrl = afwMath.StatisticsControl()
+                sctrl.setAndMask(mi.getMask().getPlaneBitMask("BAD"))
+                variance = afwMath.makeStatistics(mi, afwMath.VARIANCECLIP, sctrl).getValue()
+                del sctrl; del mi
+
+            exposure.getMaskedImage().getVariance()[:] = variance
+        #
         # process the data
         #
         calibSources = None                 # sources used to calibrate the frame (photom, astrom, psf)
