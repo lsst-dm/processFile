@@ -47,6 +47,26 @@ from lsst.meas.algorithms.measurement import SourceMeasurementTask
 
 import lsst.pex.config as pexConfig
 
+#
+# Backward compatibility (needed for HSC)
+#
+if True:
+    try:
+        CalibrateTask()
+    except RuntimeError as e:
+        _Task = CalibrateTask
+        class _CalibrateTask(_Task):
+            _DefaultName = "Calibrate"
+            def __init__(self, *args, **kwargs):
+                _Task.__init__(self, *args, **kwargs)
+
+        CalibrateTask = _CalibrateTask
+
+    try:
+        SourceDetectionTask.run
+    except AttributeError:
+        SourceDetectionTask.run = SourceDetectionTask.makeSourceCatalog 
+
 class ProcessFileConfig(pexConfig.Config):
     """A container for the Configs that ProcessFile needs
 
@@ -212,7 +232,10 @@ If inputFile contains a %s it is taken to be a template and is expanded using th
     args.config = config
     args = parser.parse_args(namespace=args)
 
-    pbArgparse.obeyShowArgument(args.show, args.config, exit=True)
+    try:
+        pbArgparse.obeyShowArgument(args.show, args.config, exit=True)
+    except AttributeError:
+        pass
 
     if args.debug:
         try:
