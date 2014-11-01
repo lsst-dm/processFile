@@ -267,6 +267,12 @@ If inputFile contains a %s it is taken to be a template and is expanded using th
             args.outputCatalog = [args.outputCatalog % f for f in args.filters]
     else:
         inputFiles = [args.inputFile]
+        if args.outputCalexp:
+            args.outputCalexp = [args.outputCalexp]
+        if args.outputCalibCatalog:
+            args.outputCalibCatalog = [args.outputCalibCatalog]
+        if args.outputCatalog:
+            args.outputCatalog = [args.outputCatalog]
 
     exposureDict, calibSourcesDict, sourcesDict = run(config, inputFiles,
                                                       returnCalibSources=args.outputCalibCatalog != None,
