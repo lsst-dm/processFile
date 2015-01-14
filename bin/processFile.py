@@ -67,7 +67,8 @@ Using such a container allows us to use the standard -c/-C/--show config options
         deblend = pexConfig.ConfigField(dtype=SourceDeblendTask.ConfigClass,
                                         doc=SourceDeblendTask.ConfigClass.__doc__)
     
-def run(config, inputFiles, returnCalibSources=False, display=False, verbose=False):
+def run(config, inputFiles, weightFiles=None, varianceFiles=None,
+        returnCalibSources=False, display=False, verbose=False):
     #
     # Create the tasks
     #
@@ -88,7 +89,7 @@ def run(config, inputFiles, returnCalibSources=False, display=False, verbose=Fal
 
     exposureDict = {}; calibSourcesDict = {}; sourcesDict = {}
     
-    for inputFile in inputFiles:
+    for inputFile, weightFile, varianceFile in zip(inputFiles, weightFiles, varianceFiles):
         #
         # Create the output table
         #
@@ -99,26 +100,9 @@ def run(config, inputFiles, returnCalibSources=False, display=False, verbose=Fal
         if verbose:
             print "Reading %s" % inputFile
             
-        exposure = afwImage.ExposureF(inputFile)
+        exposure = makeExposure(inputFile, weightFile, varianceFile,
+                                config.variance, config.badPixelValue)
         exposureDict[inputFile] = exposure
-
-        if np.isfinite(config.badPixelValue):
-            mi = exposure.getMaskedImage()
-            bad = mi.getImage().getArray() == config.badPixelValue
-            mi.getMask().getArray()[bad] |= mi.getMask().getPlaneBitMask("BAD")
-            del bad; del mi
-
-        if np.isfinite(config.variance):
-            variance = config.variance
-            if variance <= 0:
-                mi = exposure.getMaskedImage()
-
-                sctrl = afwMath.StatisticsControl()
-                sctrl.setAndMask(mi.getMask().getPlaneBitMask("BAD"))
-                variance = afwMath.makeStatistics(mi, afwMath.VARIANCECLIP, sctrl).getValue()
-                del sctrl; del mi
-
-            exposure.getMaskedImage().getVariance()[:] = variance
         #
         # process the data
         #
@@ -168,6 +152,52 @@ def run(config, inputFiles, returnCalibSources=False, display=False, verbose=Fal
 
     return exposureDict, calibSourcesDict, sourcesDict
 
+def makeExposure(inputFile, weightFile, varianceFile, badPixelValue, variance):
+    exposure = afwImage.ExposureF(inputFile)
+
+    if np.isfinite(badPixelValue):
+        mi = exposure.getMaskedImage()
+        bad = mi.getImage().getArray() == badPixelValue
+        mi.getMask().getArray()[bad] |= mi.getMask().getPlaneBitMask("BAD")
+        del bad; del mi
+
+    if np.isfinite(variance):
+        assert not (weightFile or varianceFile), \
+            "Please don't specify a variance and %s file" % ("weight" if weightFile else "variance")
+
+        if variance <= 0:
+            mi = exposure.getMaskedImage()
+
+            sctrl = afwMath.StatisticsControl()
+            sctrl.setAndMask(mi.getMask().getPlaneBitMask("BAD"))
+            variance = afwMath.makeStatistics(mi, afwMath.VARIANCECLIP, sctrl).getValue()
+            del sctrl; del mi
+
+        exposure.getMaskedImage().getVariance()[:] = variance
+    elif (weightFile or varianceFile):
+        assert(not (weightFile and varianceFile)) # we checked this earlier
+
+        mi = exposure.getMaskedImage()
+
+        if weightFile:
+            variance = afwImage.ImageF(weightFile)
+
+            varr = variance.getArray()
+            bad = (varr == 0)
+            varr[bad] = np.inf # avoid numpy warning
+            varr[:] = 1/varr
+        else:
+            variance = afwImage.ImageF(varianceFile)
+            bad = np.logical_not(np.isfinite(mi.getImage().getArray()))
+
+        mi.getMask().getArray()[bad] |= mi.getMask().getPlaneBitMask("BAD")
+        del bad
+
+        mi.getVariance()[:] = variance
+        del mi
+
+    return exposure
+
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 if __name__ == "__main__":
@@ -178,6 +208,14 @@ if __name__ == "__main__":
     parser.add_argument('inputFile', help="""File to process.
 
 If inputFile contains a %s it is taken to be a template and is expanded using the values of args.filters
+    """)
+    parser.add_argument('--weightFile', help="""File containing pixel "weights" (inverse variances)
+
+If weightFile contains a %s it is taken to be a template and is expanded using the values of args.filters
+    """)
+    parser.add_argument('--varianceFile', help="""File containing pixel variances
+
+If varianceFile contains a %s it is taken to be a template and is expanded using the values of args.filters
     """)
     parser.add_argument('--filters', nargs="+", help="List of filters to process", default="")
     parser.add_argument('--outputCatalog', nargs="?", help="Output catalogue")
@@ -238,8 +276,14 @@ If inputFile contains a %s it is taken to be a template and is expanded using th
 
         pexLog.Log.getDefaultLog().setThreshold(value)
 
+    if args.weightFile and args.varianceFile:
+        print >> sys.stderr, "Please only specify a weight *or* a variance"
+        sys.exit(1)
+
     if re.search(r"%s", args.inputFile):
         inputFiles = [args.inputFile % f for f in args.filters]
+        weightFiles = [args.weightFile % f for f in args.filters] if args.weightFile else None
+        varianceFiles = [args.varianceFile % f for f in args.filters] if args.varianceFile else None
 
         if args.outputCalexp:
             args.outputCalexp = [args.outputCalexp % f for f in args.filters]
@@ -249,6 +293,9 @@ If inputFile contains a %s it is taken to be a template and is expanded using th
             args.outputCatalog = [args.outputCatalog % f for f in args.filters]
     else:
         inputFiles = [args.inputFile]
+        weightFiles = [args.weightFile if args.weightFile else None]
+        varianceFiles = [args.varianceFile if args.varianceFile else None]
+
         if args.outputCalexp:
             args.outputCalexp = [args.outputCalexp]
         if args.outputCalibCatalog:
@@ -257,6 +304,7 @@ If inputFile contains a %s it is taken to be a template and is expanded using th
             args.outputCatalog = [args.outputCatalog]
 
     exposureDict, calibSourcesDict, sourcesDict = run(config, inputFiles,
+                                                      weightFiles=weightFiles, varianceFiles=varianceFiles,
                                                       returnCalibSources=args.outputCalibCatalog != None,
                                                       display=args.ds9, verbose=args.verbose)
     try:
