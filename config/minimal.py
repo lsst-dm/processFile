@@ -5,16 +5,16 @@ if False:
 root.detection.background.isNanSafe = True
 
 for stage in [root.calibrate.initialMeasurement, root.calibrate.measurement, root.measurement]:
-    stage.algorithms.names.clear()
-    for alg in ["shape.sdss", "flux.sinc", "flux.aperture"]:
-        stage.algorithms.names.add(alg)
+    stage.plugins.names.clear()
+    for alg in ["base_SdssCentroid", "base_SdssShape", "base_SincFlux", "base_CircularApertureFlux"]:
+        stage.plugins.names.add(alg)
 
-root.measurement.algorithms["flux.aperture"].radii = [1, 2, 4, 8, 16] # pixels
+root.measurement.plugins['base_CircularApertureFlux'].radii=[1, 2, 4, 8, 16] # pixels
 
-root.measurement.slots.instFlux = None        # flux.gaussian
-root.measurement.slots.modelFlux = None       # flux.gaussian
-root.measurement.slots.psfFlux = None         # flux.psf
+root.measurement.slots.instFlux = None
+root.measurement.slots.modelFlux = None
+root.measurement.slots.psfFlux = None
 
-# required by the PSF algorithms we chose
-for alg in ["flux.gaussian", "flux.psf", "flags.pixel"]:
-    root.calibrate.initialMeasurement.algorithms.names.add(alg) 
+# Required for PSF measurement
+for alg in ["base_PixelFlags", "base_PsfFlux"]:
+    root.calibrate.initialMeasurement.plugins.names.add(alg)
