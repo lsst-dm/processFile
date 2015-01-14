@@ -102,9 +102,6 @@ def run(config, inputFiles, returnCalibSources=False, display=False, verbose=Fal
             print >> sys.stderr, "Failed to import lsst.meas.deblender;  setting doDeblend = False"
             config.doDeblend = False
 
-    # The CircularApertureFlux algorithm sets radii which may be plotted below
-    config.measurement.plugins.names.add("base_CircularApertureFlux")
-
     sourceMeasurementTask = SingleFrameMeasurementTask(config=config.measurement,
                                                        schema=schema, algMetadata=algMetadata)
 
