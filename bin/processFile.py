@@ -43,7 +43,7 @@ try:
     from lsst.meas.deblender import SourceDeblendTask
 except ImportError:
     SourceDeblendTask = None
-from lsst.meas.algorithms.measurement import SourceMeasurementTask
+from lsst.meas.base import SingleFrameMeasurementTask
 
 import lsst.pex.config as pexConfig
 
@@ -79,8 +79,8 @@ Using such a container allows us to use the standard -c/-C/--show config options
                                       doc=CalibrateTask.ConfigClass.__doc__)
     detection = pexConfig.ConfigField(dtype=SourceDetectionTask.ConfigClass,
                                       doc=SourceDetectionTask.ConfigClass.__doc__)
-    measurement = pexConfig.ConfigField(dtype=SourceMeasurementTask.ConfigClass,
-                                      doc=SourceMeasurementTask.ConfigClass.__doc__)
+    measurement = pexConfig.ConfigField(dtype=SingleFrameMeasurementTask.ConfigClass,
+                                      doc=SingleFrameMeasurementTask.ConfigClass.__doc__)
     doDeblend = pexConfig.Field(dtype=bool, default=True, doc = "Deblend sources?")
     if SourceDeblendTask:
         deblend = pexConfig.ConfigField(dtype=SourceDeblendTask.ConfigClass,
@@ -101,8 +101,12 @@ def run(config, inputFiles, returnCalibSources=False, display=False, verbose=Fal
         else:
             print >> sys.stderr, "Failed to import lsst.meas.deblender;  setting doDeblend = False"
             config.doDeblend = False
-    sourceMeasurementTask = SourceMeasurementTask(config=config.measurement,
-                                                  schema=schema, algMetadata=algMetadata)
+
+    # The CircularApertureFlux algorithm sets radii which may be plotted below
+    config.measurement.plugins.names.add("base_CircularApertureFlux")
+
+    sourceMeasurementTask = SingleFrameMeasurementTask(config=config.measurement,
+                                                       schema=schema, algMetadata=algMetadata)
 
     exposureDict = {}; calibSourcesDict = {}; sourcesDict = {}
     
@@ -166,8 +170,8 @@ def run(config, inputFiles, returnCalibSources=False, display=False, verbose=Fal
             print "Detected %d objects" % len(sources)
 
         if display:                         # display on ds9 (see also --debug argparse option)
-            if algMetadata.exists("flux_aperture_radii"):
-                radii = algMetadata.get("flux_aperture_radii")
+            if algMetadata.exists("base_CircularApertureFlux_radii"):
+                radii = algMetadata.get("base_CircularApertureFlux_radii")
             else:
                 radii = None
 
@@ -177,12 +181,12 @@ def run(config, inputFiles, returnCalibSources=False, display=False, verbose=Fal
             with ds9.Buffering():
                 for s in sources:
                     xy = s.getCentroid()
-                    ds9.dot('+', *xy, ctype=ds9.CYAN if s.get("flags.negative") else ds9.GREEN, frame=frame)
+                    ds9.dot('+', *xy, ctype=ds9.CYAN if s.get("flags_negative") else ds9.GREEN, frame=frame)
                     ds9.dot(s.getShape(), *xy, ctype=ds9.RED, frame=frame)
 
                     if radii:
-                        for i in range(s.get("flux.aperture.nProfile")):
-                            ds9.dot('o', *xy, size=radii[i], ctype=ds9.YELLOW, frame=frame)
+                        for radius in radii:
+                            ds9.dot('o', *xy, size=radius, ctype=ds9.YELLOW, frame=frame)
 
     return exposureDict, calibSourcesDict, sourcesDict
 
