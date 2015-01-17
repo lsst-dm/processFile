@@ -37,6 +37,8 @@ import lsst.afw.math               as afwMath
 import lsst.afw.table              as afwTable
 import lsst.afw.display.ds9        as ds9
 import lsst.meas.algorithms        as measAlg
+import lsst.pex.config             as pexConfig
+
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from lsst.meas.algorithms.detection import SourceDetectionTask
 try:
@@ -44,28 +46,6 @@ try:
 except ImportError:
     SourceDeblendTask = None
 from lsst.meas.base import SingleFrameMeasurementTask
-
-import lsst.pex.config as pexConfig
-
-#
-# Backward compatibility (needed for HSC)
-#
-if True:
-    try:
-        CalibrateTask()
-    except RuntimeError as e:
-        _Task = CalibrateTask
-        class _CalibrateTask(_Task):
-            _DefaultName = "Calibrate"
-            def __init__(self, *args, **kwargs):
-                _Task.__init__(self, *args, **kwargs)
-
-        CalibrateTask = _CalibrateTask
-
-    try:
-        SourceDetectionTask.run
-    except AttributeError:
-        SourceDetectionTask.run = SourceDetectionTask.makeSourceCatalog 
 
 class ProcessFileConfig(pexConfig.Config):
     """A container for the Configs that ProcessFile needs
