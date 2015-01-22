@@ -2,7 +2,7 @@
 
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -37,51 +37,32 @@ import lsst.afw.math               as afwMath
 import lsst.afw.table              as afwTable
 import lsst.afw.display.ds9        as ds9
 import lsst.meas.algorithms        as measAlg
+import lsst.pex.config             as pexConfig
+
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from lsst.meas.algorithms.detection import SourceDetectionTask
 try:
     from lsst.meas.deblender import SourceDeblendTask
 except ImportError:
     SourceDeblendTask = None
-from lsst.meas.algorithms.measurement import SourceMeasurementTask
-
-import lsst.pex.config as pexConfig
-
-#
-# Backward compatibility (needed for HSC)
-#
-if True:
-    try:
-        CalibrateTask()
-    except RuntimeError as e:
-        _Task = CalibrateTask
-        class _CalibrateTask(_Task):
-            _DefaultName = "Calibrate"
-            def __init__(self, *args, **kwargs):
-                _Task.__init__(self, *args, **kwargs)
-
-        CalibrateTask = _CalibrateTask
-
-    try:
-        SourceDetectionTask.run
-    except AttributeError:
-        SourceDetectionTask.run = SourceDetectionTask.makeSourceCatalog 
+from lsst.meas.base import SingleFrameMeasurementTask
 
 class ProcessFileConfig(pexConfig.Config):
     """A container for the Configs that ProcessFile needs
 
 Using such a container allows us to use the standard -c/-C/--show config options that pipe_base provides
 """
-    variance = pexConfig.Field(dtype=float, default=np.nan, doc = "Initial per-pixel variance (if <= 0, estimage from inputs)")
-    badPixelValue = pexConfig.Field(dtype=float, default=np.nan, doc = "Value indicating a bad pixel")
-    doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Calibrate input data?")
+    variance = pexConfig.Field(dtype=float, default=np.nan,
+                               doc="Initial per-pixel variance (if <= 0, estimage from inputs)")
+    badPixelValue = pexConfig.Field(dtype=float, default=np.nan, doc="Value indicating a bad pixel")
+    doCalibrate = pexConfig.Field(dtype=bool, default=True, doc="Calibrate input data?")
     calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass,
                                       doc=CalibrateTask.ConfigClass.__doc__)
     detection = pexConfig.ConfigField(dtype=SourceDetectionTask.ConfigClass,
                                       doc=SourceDetectionTask.ConfigClass.__doc__)
-    measurement = pexConfig.ConfigField(dtype=SourceMeasurementTask.ConfigClass,
-                                      doc=SourceMeasurementTask.ConfigClass.__doc__)
-    doDeblend = pexConfig.Field(dtype=bool, default=True, doc = "Deblend sources?")
+    measurement = pexConfig.ConfigField(dtype=SingleFrameMeasurementTask.ConfigClass,
+                                        doc=SingleFrameMeasurementTask.ConfigClass.__doc__)
+    doDeblend = pexConfig.Field(dtype=bool, default=True, doc="Deblend sources?")
     if SourceDeblendTask:
         deblend = pexConfig.ConfigField(dtype=SourceDeblendTask.ConfigClass,
                                         doc=SourceDeblendTask.ConfigClass.__doc__)
@@ -101,8 +82,9 @@ def run(config, inputFiles, returnCalibSources=False, display=False, verbose=Fal
         else:
             print >> sys.stderr, "Failed to import lsst.meas.deblender;  setting doDeblend = False"
             config.doDeblend = False
-    sourceMeasurementTask = SourceMeasurementTask(config=config.measurement,
-                                                  schema=schema, algMetadata=algMetadata)
+
+    sourceMeasurementTask = SingleFrameMeasurementTask(config=config.measurement,
+                                                       schema=schema, algMetadata=algMetadata)
 
     exposureDict = {}; calibSourcesDict = {}; sourcesDict = {}
     
@@ -166,8 +148,8 @@ def run(config, inputFiles, returnCalibSources=False, display=False, verbose=Fal
             print "Detected %d objects" % len(sources)
 
         if display:                         # display on ds9 (see also --debug argparse option)
-            if algMetadata.exists("flux_aperture_radii"):
-                radii = algMetadata.get("flux_aperture_radii")
+            if algMetadata.exists("base_CircularApertureFlux_radii"):
+                radii = algMetadata.get("base_CircularApertureFlux_radii")
             else:
                 radii = None
 
@@ -177,12 +159,12 @@ def run(config, inputFiles, returnCalibSources=False, display=False, verbose=Fal
             with ds9.Buffering():
                 for s in sources:
                     xy = s.getCentroid()
-                    ds9.dot('+', *xy, ctype=ds9.CYAN if s.get("flags.negative") else ds9.GREEN, frame=frame)
+                    ds9.dot('+', *xy, ctype=ds9.CYAN if s.get("flags_negative") else ds9.GREEN, frame=frame)
                     ds9.dot(s.getShape(), *xy, ctype=ds9.RED, frame=frame)
 
                     if radii:
-                        for i in range(s.get("flux.aperture.nProfile")):
-                            ds9.dot('o', *xy, size=radii[i], ctype=ds9.YELLOW, frame=frame)
+                        for radius in radii:
+                            ds9.dot('o', *xy, size=radius, ctype=ds9.YELLOW, frame=frame)
 
     return exposureDict, calibSourcesDict, sourcesDict
 
@@ -204,8 +186,8 @@ If inputFile contains a %s it is taken to be a template and is expanded using th
 
     parser.add_argument("-c", "--config", nargs="*", action=pbArgparse.ConfigValueAction,
                         help="config override(s), e.g. -c foo=newfoo bar.baz=3", metavar="NAME=VALUE")
-    parser.add_argument("-C", "--configfile", dest="configfile", nargs="*", action=pbArgparse.ConfigFileAction,
-                        help="config override file(s)")
+    parser.add_argument("-C", "--configfile", dest="configfile", nargs="*",
+                        action=pbArgparse.ConfigFileAction, help="config override file(s)")
     parser.add_argument("--show", nargs="+", default=(),
                         help="display the specified information to stdout and quit (unless run is specified).")
     parser.add_argument("-L", "--loglevel", help="logging level", default="WARN")

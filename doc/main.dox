@@ -15,7 +15,7 @@ processFile.py is built using four LSST Tasks:
 - \ref CalibrateTask_ "CalibrateTask"
 - \ref SourceDetectionTask_ "SourceDetectionTask"
 - \ref SourceDeblendTask_ "SourceDeblendTask"
-- \ref SourceMeasurementTask_ "SourceMeasurementTask"
+- \ref SingleFrameMeasurementTask_ "SingleFrameMeasurementTask"
 
 and is intended to process a flat fielded astronomical image.
 \note
@@ -125,8 +125,9 @@ to at least guess at all your options for enabling/disabling things.
 
 \section processFile_installation Installing processFile
 
-Any queries or comments should be directed to the
-lsst-dm-stack-users@lsstcorp.org mailing list.
+Any queries or comments should be directed to the <a
+href="https://lists.lsst.org/mailman/listinfo/dm-users">dm-users@lists.lsst.org</a>
+mailing list.
 
 <hr>
 
