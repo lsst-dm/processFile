@@ -204,23 +204,30 @@ if __name__ == "__main__":
     import argparse
     import lsst.pipe.base.argumentParser as pbArgparse
 
+    # Note that argparse doesn't actually respect the newlines in the help message below.
     parser = argparse.ArgumentParser(description="Process a fits file, detecting and measuring sources")
     parser.add_argument('inputFile', help="""File to process.
 
-If inputFile contains a %s it is taken to be a template and is expanded using the values of args.filters
+If inputFile contains a %%s it is taken to be a template and is expanded using the values of args.filters
+
+If the inputFile FITS file has a 'VARIANCE' extension, then that extension will be used for the variance image.
     """)
     parser.add_argument('--weightFile', help="""File containing pixel "weights" (inverse variances)
 
-If weightFile contains a %s it is taken to be a template and is expanded using the values of args.filters
+If weightFile contains a %%s it is taken to be a template and is expanded using the values of args.filters.  Requires that inputFile also have a %%s.
+Setting this option will override any included 'VARIANCE' image extension in inputFile.
     """)
     parser.add_argument('--varianceFile', help="""File containing pixel variances
 
-If varianceFile contains a %s it is taken to be a template and is expanded using the values of args.filters
+If varianceFile contains a %%s it is taken to be a template and is expanded using the values of args.filters.  Requires that inputFile also have a %%s.
+Setting this option will override any included 'VARIANCE' image extension in inputFile.
     """)
     parser.add_argument('--filters', nargs="+", help="List of filters to process", default="")
     parser.add_argument('--outputCatalog', nargs="?", help="Output catalogue")
     parser.add_argument('--outputCalibCatalog', nargs="?", help="Output catalogue of calibration objects")
-    parser.add_argument('--outputCalexp', nargs="?", help="Output calibrated exposure")
+    parser.add_argument('--outputCalexp', nargs="?", help="""Output calibrated exposure.
+Also includes the PSF model and detection masks.
+    """)
 
     parser.add_argument("-c", "--config", nargs="*", action=pbArgparse.ConfigValueAction,
                         help="config override(s), e.g. -c foo=newfoo bar.baz=3", metavar="NAME=VALUE")
