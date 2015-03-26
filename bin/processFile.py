@@ -102,7 +102,7 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
             
         exposure = makeExposure(inputFile, weightFile, varianceFile,
                                 config.variance, config.badPixelValue)
-        exposureDict[inputFile] = exposure
+
         #
         # process the data
         #
@@ -117,6 +117,7 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
             if not exposure.getPsf():
                 calibrateTask.installInitialPsf(exposure)
 
+        exposureDict[inputFile] = exposure
         calibSourcesDict[inputFile] = calibSources
 
         result = sourceDetectionTask.run(tab, exposure)
