@@ -101,8 +101,7 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
             print "Reading %s" % inputFile
             
         exposure = makeExposure(inputFile, weightFile, varianceFile,
-                                config.variance, config.badPixelValue)
-
+                                config.badPixelValue, config.variance)
         #
         # process the data
         #
