@@ -39,6 +39,7 @@ import lsst.afw.display.ds9        as ds9
 import lsst.meas.algorithms        as measAlg
 import lsst.pex.config             as pexConfig
 
+from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from lsst.meas.algorithms.detection import SourceDetectionTask
 try:
@@ -46,6 +47,18 @@ try:
 except ImportError:
     SourceDeblendTask = None
 from lsst.meas.base import SingleFrameMeasurementTask
+
+class MyIsrConfig(IsrTask.ConfigClass):
+    """A version of IsrTask.ConfigClass that disables almost everything
+    The interpolation code is still run"""
+    
+    def __init__(self, *args, **kwargs):
+        IsrTask.ConfigClass.__init__(self, *args, **kwargs)
+        self.doBias = False
+        self.doDark = False
+        self.doFlat = False
+        self.doFringe = False
+        self.doAssembleCcd = False
 
 class ProcessFileConfig(pexConfig.Config):
     """A container for the Configs that ProcessFile needs
@@ -55,6 +68,11 @@ Using such a container allows us to use the standard -c/-C/--show config options
     variance = pexConfig.Field(dtype=float, default=np.nan,
                                doc="Initial per-pixel variance (if <= 0, estimate from inputs)")
     badPixelValue = pexConfig.Field(dtype=float, default=np.nan, doc="Value indicating a bad pixel")
+    interpPlanes = pexConfig.ListField(
+        dtype = str, default = ["BAD",],
+        doc = "Names of mask planes to interpolate over (e.g. ['BAD', 'SAT'])",
+        itemCheck = lambda x: x in afwImage.MaskU().getMaskPlaneDict().keys())
+    isr = MyIsrConfig()
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc="Calibrate input data?")
     calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass,
                                       doc=CalibrateTask.ConfigClass.__doc__)
@@ -74,7 +92,8 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
     #
     schema = afwTable.SourceTable.makeMinimalSchema()
     algMetadata = dafBase.PropertyList()
-    
+
+    isrTask = IsrTask(config=config.isr)
     calibrateTask =         CalibrateTask(config=config.calibrate)
     sourceDetectionTask =   SourceDetectionTask(config=config.detection, schema=schema)
     if config.doDeblend:
@@ -102,6 +121,13 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
             
         exposure = makeExposure(inputFile, weightFile, varianceFile,
                                 config.badPixelValue, config.variance)
+        #
+        if config.interpPlanes:
+            import lsst.ip.isr as ipIsr
+            defects = ipIsr.getDefectListFromMask(exposure.getMaskedImage(), config.interpPlanes,
+                                                  growFootprints=0)
+
+            isrTask.run(exposure, defects=defects)
         #
         # process the data
         #
