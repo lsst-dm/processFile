@@ -53,7 +53,7 @@ class ProcessFileConfig(pexConfig.Config):
 Using such a container allows us to use the standard -c/-C/--show config options that pipe_base provides
 """
     variance = pexConfig.Field(dtype=float, default=np.nan,
-                               doc="Initial per-pixel variance (if <= 0, estimage from inputs)")
+                               doc="Initial per-pixel variance (if <= 0, estimate from inputs)")
     badPixelValue = pexConfig.Field(dtype=float, default=np.nan, doc="Value indicating a bad pixel")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc="Calibrate input data?")
     calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass,
@@ -161,21 +161,11 @@ def makeExposure(inputFile, weightFile, varianceFile, badPixelValue, variance):
         mi.getMask().getArray()[bad] |= mi.getMask().getPlaneBitMask("BAD")
         del bad; del mi
 
-    if np.isfinite(variance):
-        assert not (weightFile or varianceFile), \
-            "Please don't specify a variance and %s file" % ("weight" if weightFile else "variance")
-
-        if variance <= 0:
-            mi = exposure.getMaskedImage()
-
-            sctrl = afwMath.StatisticsControl()
-            sctrl.setAndMask(mi.getMask().getPlaneBitMask("BAD"))
-            variance = afwMath.makeStatistics(mi, afwMath.VARIANCECLIP, sctrl).getValue()
-            del sctrl; del mi
-
-        exposure.getMaskedImage().getVariance()[:] = variance
-    elif (weightFile or varianceFile):
+    if weightFile or varianceFile:
         assert(not (weightFile and varianceFile)) # we checked this earlier
+
+        assert not np.isfinite(variance), \
+            "Please don't specify a variance and %s file" % ("weight" if weightFile else "variance")
 
         mi = exposure.getMaskedImage()
 
@@ -195,6 +185,16 @@ def makeExposure(inputFile, weightFile, varianceFile, badPixelValue, variance):
 
         mi.getVariance()[:] = variance
         del mi
+    else:
+        if not np.isfinite(variance) or variance <= 0:
+            mi = exposure.getMaskedImage()
+
+            sctrl = afwMath.StatisticsControl()
+            sctrl.setAndMask(mi.getMask().getPlaneBitMask("BAD"))
+            variance = afwMath.makeStatistics(mi, afwMath.VARIANCECLIP, sctrl).getValue()
+            del sctrl; del mi
+
+        exposure.getMaskedImage().getVariance()[:] = variance
 
     return exposure
 
@@ -335,6 +335,5 @@ Also includes the PSF model and detection masks.
             exposure.writeFits(args.outputCalexp[i])
         if args.outputCalibCatalog:
             calibSources.writeFits(args.outputCalibCatalog[i])
-            print calibSources.getSchema()
         if args.outputCatalog:
             sources.writeFits(args.outputCatalog[i])
