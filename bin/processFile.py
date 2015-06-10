@@ -105,6 +105,13 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
 
     sourceMeasurementTask = SingleFrameMeasurementTask(config=config.measurement,
                                                        schema=schema, algMetadata=algMetadata)
+    #
+    # Add fields needed to identify stars while calibrating
+    #
+    keysToCopy = [(schema.addField(afwTable.Field["Flag"]("calib_detected",
+                                                          "Source was detected by calibrate")), None)]
+    for key in calibrateTask.getCalibKeys():
+        keysToCopy.append((schema.addField(calibrateTask.schema.find(key).field), key))
 
     exposureDict = {}; calibSourcesDict = {}; sourcesDict = {}
     
@@ -131,19 +138,16 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
         #
         # process the data
         #
-        calibSources = None                 # sources used to calibrate the frame (photom, astrom, psf)
         if config.doCalibrate:
             result = calibrateTask.run(exposure)
-            exposure, sources = result.exposure, result.sources
-
-            if returnCalibSources:
-                calibSources = sources
+            exposure, calibSources = result.exposure, result.sources
         else:
+            calibSources = None
             if not exposure.getPsf():
                 calibrateTask.installInitialPsf(exposure)
 
         exposureDict[inputFile] = exposure
-        calibSourcesDict[inputFile] = calibSources
+        calibSourcesDict[inputFile] = calibSources if returnCalibSources else None
 
         result = sourceDetectionTask.run(tab, exposure)
         sources = result.sources
@@ -157,6 +161,8 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
         if verbose:
             print "Detected %d objects" % len(sources)
 
+        propagateCalibFlags(keysToCopy, calibSources, sources)
+        
         if display:                         # display on ds9 (see also --debug argparse option)
             if algMetadata.exists("base_CircularApertureFlux_radii"):
                 radii = algMetadata.get("base_CircularApertureFlux_radii")
@@ -223,6 +229,43 @@ def makeExposure(inputFile, weightFile, varianceFile, badPixelValue, variance):
         exposure.getMaskedImage().getVariance()[:] = variance
 
     return exposure
+
+def propagateCalibFlags(keysToCopy, calibSources, sources, matchRadius=1):
+    """Match the calibSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
+    """
+    if calibSources is None or sources is None:
+        return
+
+    closest = False                 # return all matched objects
+    matched = afwTable.matchRaDec(calibSources, sources, matchRadius*afwGeom.arcseconds, closest)
+    #
+    # Because we had to allow multiple matches to handle parents, we now need to
+    # prune to the best matches
+    #
+    bestMatches = {}
+    for m0, m1, d in matched:
+        id0 = m0.getId()
+        if bestMatches.has_key(id0):
+            if d > bestMatches[id0][2]:
+                continue
+
+        bestMatches[id0] = (m0, m1, d)
+
+    matched = bestMatches.values()
+    #
+    # Check that we got it right
+    #
+    if len(set(m[0].getId() for m in matched)) != len(matched):
+        print("At least one calibSource is matched to more than one Source")
+    #
+    # Copy over the desired flags
+    #
+    for cs, s, d in matched:
+        skey, ckey = keysToCopy[0]
+        s.setFlag(skey, True)
+
+        for skey, ckey in keysToCopy[1:]:
+            s.set(skey, cs.get(ckey))
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
