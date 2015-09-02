@@ -35,7 +35,7 @@ import lsst.afw.geom               as afwGeom
 import lsst.afw.image              as afwImage
 import lsst.afw.math               as afwMath
 import lsst.afw.table              as afwTable
-import lsst.afw.display.ds9        as ds9
+import lsst.afw.display            as afwDisplay
 import lsst.meas.algorithms        as measAlg
 import lsst.pex.config             as pexConfig
 
@@ -86,7 +86,7 @@ Using such a container allows us to use the standard -c/-C/--show config options
                                         doc=SourceDeblendTask.ConfigClass.__doc__)
     
 def run(config, inputFiles, weightFiles=None, varianceFiles=None,
-        returnCalibSources=False, display=False, verbose=False):
+        returnCalibSources=False, displayResults=[], verbose=False):
     #
     # Create the tasks
     #
@@ -163,24 +163,27 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
 
         propagateCalibFlags(keysToCopy, calibSources, sources)
         
-        if display:                         # display on ds9 (see also --debug argparse option)
+        if displayResults:              # display results of processing (see also --debug argparse option)
+            display = afwDisplay.getDisplay(frame=1)
+
             if algMetadata.exists("base_CircularApertureFlux_radii"):
                 radii = algMetadata.get("base_CircularApertureFlux_radii")
             else:
                 radii = None
 
-            frame = 1
-            ds9.mtv(exposure, title=os.path.split(inputFile)[1], frame=frame)
+            display.mtv(exposure, title=os.path.split(inputFile)[1])
 
-            with ds9.Buffering():
+            with display.Buffering():
                 for s in sources:
                     xy = s.getCentroid()
-                    ds9.dot('+', *xy, ctype=ds9.CYAN if s.get("flags_negative") else ds9.GREEN, frame=frame)
-                    ds9.dot(s.getShape(), *xy, ctype=ds9.RED, frame=frame)
+                    display.dot('+', *xy,
+                                ctype=afwDisplay.CYAN if s.get("flags_negative") else afwDisplay.GREEN)
+
+                    display.dot(s.getShape(), *xy, ctype=afwDisplay.RED)
 
                     if radii:
                         for radius in radii:
-                            ds9.dot('o', *xy, size=radius, ctype=ds9.YELLOW, frame=frame)
+                            display.dot('o', *xy, size=radius, ctype=afwDisplay.YELLOW)
 
     return exposureDict, calibSourcesDict, sourcesDict
 
@@ -383,7 +386,7 @@ Also includes the PSF model and detection masks.
     exposureDict, calibSourcesDict, sourcesDict = run(config, inputFiles,
                                                       weightFiles=weightFiles, varianceFiles=varianceFiles,
                                                       returnCalibSources=args.outputCalibCatalog != None,
-                                                      display=args.ds9, verbose=args.verbose)
+                                                      displayResults=args.display, verbose=args.verbose)
     try:
         import lsst.processFile.version
         version = lsst.processFile.version.__version__
