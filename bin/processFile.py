@@ -165,12 +165,15 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
         propagateCalibFlags(keysToCopy, calibSources, sources)
         
         if displayResults:              # display results of processing (see also --debug argparse option)
+            showApertures = "showApertures".upper() in displayResults
+            showShapes = "showShapes".upper() in displayResults
+
             display = afwDisplay.getDisplay(frame=1)
 
             if algMetadata.exists("base_CircularApertureFlux_radii"):
                 radii = algMetadata.get("base_CircularApertureFlux_radii")
             else:
-                radii = None
+                radii = []
 
             display.mtv(exposure, title=os.path.split(inputFile)[1])
 
@@ -180,9 +183,10 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
                     display.dot('+', *xy,
                                 ctype=afwDisplay.CYAN if s.get("flags_negative") else afwDisplay.GREEN)
 
-                    display.dot(s.getShape(), *xy, ctype=afwDisplay.RED)
+                    if showShapes:
+                        display.dot(s.getShape(), *xy, ctype=afwDisplay.RED)
 
-                    if radii:
+                    if showApertures:
                         for radius in radii:
                             display.dot('o', *xy, size=radius, ctype=afwDisplay.YELLOW)
 
@@ -317,12 +321,15 @@ Also includes the PSF model and detection masks.
                         action=pbArgparse.ConfigFileAction, help="config override file(s)")
     parser.add_argument("--show", nargs="+", default=(),
                         help="display the specified information to stdout and quit (unless run is specified).")
-    parser.add_argument("-L", "--loglevel", help="logging level", default="WARN")
+    parser.add_argument("-L", "--loglevel", help="logging level", default="WARN",
+                        choices=CaseInsensitiveChoices('DEBUG', 'INFO', 'WARN', 'FATAL'))
     parser.add_argument("-T", "--trace", nargs="*", action=pbArgparse.TraceLevelAction,
                         help="trace level for component", metavar="COMPONENT=LEVEL")
 
     parser.add_argument('--debug', '-d', action="store_true", help="Load debug.py?", default=False)
-    parser.add_argument('--ds9', action="store_true", help="Display sources on ds9", default=False)
+    parser.add_argument('--display', nargs='*', help="Display sources on an image display",
+                        choices=CaseInsensitiveChoices('True', 'showApertures', "showShapes"),
+                        default=None)
     parser.add_argument('--verbose', '-v', action="store_true", help="Be chatty?", default=False)
 
     #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -341,6 +348,12 @@ Also includes the PSF model and detection masks.
     args = argparse.Namespace()
     args.config = config
     args = parser.parse_args(namespace=args)
+    #
+    # a straight "--display" is equivalent to "--display True"
+    #
+    if args.display == []:              # not None -- that means "no --display argument was provided"
+        args.display = ["true"]
+    args.display = [_.upper() for _ in args.display]
 
     try:
         pbArgparse.obeyShowArgument(args.show, args.config, exit=True)
