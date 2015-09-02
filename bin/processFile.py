@@ -105,6 +105,7 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
 
     sourceMeasurementTask = SingleFrameMeasurementTask(config=config.measurement,
                                                        schema=schema, algMetadata=algMetadata)
+    sourceMeasurementTask.config.doApplyApCorr = 'yes'
     #
     # Add fields needed to identify stars while calibrating
     #
