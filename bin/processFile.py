@@ -351,8 +351,10 @@ Also includes the PSF model and detection masks.
     #
     # a straight "--display" is equivalent to "--display True"
     #
-    if args.display == []:              # not None -- that means "no --display argument was provided"
-        args.display = ["true"]
+    if args.display is None:              # no --display argument was provided
+        args.display = []
+    elif args.display == []:              # a bare --display with no arguments
+        args.display = ["True"]
     args.display = [_.upper() for _ in args.display]
 
     try:
