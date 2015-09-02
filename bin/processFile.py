@@ -273,6 +273,15 @@ def propagateCalibFlags(keysToCopy, calibSources, sources, matchRadius=1):
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+class CaseInsensitiveChoices(list):
+    """A class to pass to argparse to provide case-insensitive choices"""
+    def __init__(self, *args):
+        self._choices = args[:]
+    def __contains__(self, what):
+        return what.upper() in [_.upper() for _ in self._choices]
+    def __iter__(self):
+        return self._choices.__iter__()
+
 if __name__ == "__main__":
     import argparse
     import lsst.pipe.base.argumentParser as pbArgparse
@@ -345,16 +354,7 @@ Also includes the PSF model and detection masks.
             print >> sys.stderr, e
 
     if args.loglevel:
-        permitted = ('DEBUG', 'INFO', 'WARN', 'FATAL')
-        if args.loglevel.upper() in permitted:
-            value = getattr(pexLog.Log, args.loglevel.upper())
-        else:
-            try:
-                value = int(args.loglevel)
-            except ValueError:
-                print >> sys.stderr, "log-level=%s not int or one of %s" % (args.loglevel, permitted)
-                sys.exit(1)
-
+        value = getattr(pexLog.Log, args.loglevel.upper())
         pexLog.Log.getDefaultLog().setThreshold(value)
 
     if args.weightFile and args.varianceFile:
