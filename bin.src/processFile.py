@@ -40,7 +40,7 @@ import lsst.meas.algorithms        as measAlg
 import lsst.pex.config             as pexConfig
 
 from lsst.ip.isr import IsrTask
-from lsst.pipe.tasks.calibrate import CalibrateTask
+from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
 from lsst.meas.algorithms.detection import SourceDetectionTask
 try:
     from lsst.meas.deblender import SourceDeblendTask
@@ -58,6 +58,7 @@ class MyIsrConfig(IsrTask.ConfigClass):
         self.doDark = False
         self.doFlat = False
         self.doFringe = False
+        self.doLinearize = False
         self.doAssembleCcd = False
 
 class ProcessFileConfig(pexConfig.Config):
@@ -72,19 +73,25 @@ Using such a container allows us to use the standard -c/-C/--show config options
         dtype = str, default = ["BAD",],
         doc = "Names of mask planes to interpolate over (e.g. ['BAD', 'SAT'])",
         itemCheck = lambda x: x in afwImage.MaskU().getMaskPlaneDict().keys())
+
     isr = MyIsrConfig()
+
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc="Calibrate input data?")
-    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass,
-                                      doc=CalibrateTask.ConfigClass.__doc__)
+    charImage = pexConfig.ConfigField(dtype=CharacterizeImageTask.ConfigClass,
+                                      doc=CharacterizeImageTask.ConfigClass.__doc__)
+
     detection = pexConfig.ConfigField(dtype=SourceDetectionTask.ConfigClass,
                                       doc=SourceDetectionTask.ConfigClass.__doc__)
+    detection.returnOriginalFootprints = False
+
     measurement = pexConfig.ConfigField(dtype=SingleFrameMeasurementTask.ConfigClass,
                                         doc=SingleFrameMeasurementTask.ConfigClass.__doc__)
+
     doDeblend = pexConfig.Field(dtype=bool, default=True, doc="Deblend sources?")
     if SourceDeblendTask:
         deblend = pexConfig.ConfigField(dtype=SourceDeblendTask.ConfigClass,
                                         doc=SourceDeblendTask.ConfigClass.__doc__)
-    
+        
 def run(config, inputFiles, weightFiles=None, varianceFiles=None,
         returnCalibSources=False, displayResults=[], verbose=False):
     #
@@ -94,7 +101,7 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
     algMetadata = dafBase.PropertyList()
 
     isrTask = IsrTask(config=config.isr)
-    calibrateTask =         CalibrateTask(config=config.calibrate)
+    charImageTask =         CharacterizeImageTask(None, config=config.charImage)
     sourceDetectionTask =   SourceDetectionTask(config=config.detection, schema=schema)
     if config.doDeblend:
         if SourceDeblendTask:
@@ -102,17 +109,13 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
         else:
             print >> sys.stderr, "Failed to import lsst.meas.deblender;  setting doDeblend = False"
             config.doDeblend = False
+    sourceMeasurementTask = SingleFrameMeasurementTask(schema=schema, config=config.measurement,
+                                                       algMetadata=algMetadata)
 
-    sourceMeasurementTask = SingleFrameMeasurementTask(config=config.measurement,
-                                                       schema=schema, algMetadata=algMetadata)
-    sourceMeasurementTask.config.doApplyApCorr = 'yes'
-    #
-    # Add fields needed to identify stars while calibrating
-    #
-    keysToCopy = [(schema.addField(afwTable.Field["Flag"]("calib_detected",
-                                                          "Source was detected by calibrate")), None)]
-    for key in calibrateTask.getCalibKeys():
-        keysToCopy.append((schema.addField(calibrateTask.schema.find(key).field), key))
+    keysToCopy = []
+    for key in [charImageTask.measurePsf.reservedKey,
+                charImageTask.measurePsf.usedKey,]:
+        keysToCopy.append((schema.addField(charImageTask.schema.find(key).field), key))
 
     exposureDict = {}; calibSourcesDict = {}; sourcesDict = {}
     
@@ -140,12 +143,12 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
         # process the data
         #
         if config.doCalibrate:
-            result = calibrateTask.run(exposure)
-            exposure, calibSources = result.exposure, result.sources
+            result = charImageTask.characterize(exposure)
+            exposure, calibSources = result.exposure, result.sourceCat
         else:
             calibSources = None
             if not exposure.getPsf():
-                calibrateTask.installInitialPsf(exposure)
+                charImageTask.installSimplePsf.run(exposure)
 
         exposureDict[inputFile] = exposure
         calibSourcesDict[inputFile] = calibSources if returnCalibSources else None
@@ -155,17 +158,18 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
         sourcesDict[inputFile] = sources
 
         if config.doDeblend:
-            sourceDeblendTask.run(exposure, sources, exposure.getPsf())
+            sourceDeblendTask.run(exposure, sources)
 
         sourceMeasurementTask.measure(exposure, sources)
 
         if verbose:
             print "Detected %d objects" % len(sources)
 
-        propagateCalibFlags(keysToCopy, calibSources, sources)
+        propagatePsfFlags(keysToCopy, calibSources, sources)
         
         if displayResults:              # display results of processing (see also --debug argparse option)
             showApertures = "showApertures".upper() in displayResults
+            showPSFs = "showPSFs".upper() in displayResults
             showShapes = "showShapes".upper() in displayResults
 
             display = afwDisplay.getDisplay(frame=1)
@@ -182,6 +186,10 @@ def run(config, inputFiles, weightFiles=None, varianceFiles=None,
                     xy = s.getCentroid()
                     display.dot('+', *xy,
                                 ctype=afwDisplay.CYAN if s.get("flags_negative") else afwDisplay.GREEN)
+
+                    if showPSFs and (s.get("calib_psfUsed") or s.get("calib_psfReserved")):
+                        display.dot('o', *xy, size=10,
+                                    ctype=afwDisplay.GREEN if s.get("calib_psfUsed") else afwDisplay.YELLOW)
 
                     if showShapes:
                         display.dot(s.getShape(), *xy, ctype=afwDisplay.RED)
@@ -238,14 +246,14 @@ def makeExposure(inputFile, weightFile, varianceFile, badPixelValue, variance):
 
     return exposure
 
-def propagateCalibFlags(keysToCopy, calibSources, sources, matchRadius=1):
+def propagatePsfFlags(keysToCopy, calibSources, sources, matchRadius=1):
     """Match the calibSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
     """
     if calibSources is None or sources is None:
         return
 
     closest = False                 # return all matched objects
-    matched = afwTable.matchRaDec(calibSources, sources, matchRadius*afwGeom.arcseconds, closest)
+    matched = afwTable.matchXy(calibSources, sources, matchRadius, closest)
     #
     # Because we had to allow multiple matches to handle parents, we now need to
     # prune to the best matches
@@ -269,10 +277,7 @@ def propagateCalibFlags(keysToCopy, calibSources, sources, matchRadius=1):
     # Copy over the desired flags
     #
     for cs, s, d in matched:
-        skey, ckey = keysToCopy[0]
-        s.setFlag(skey, True)
-
-        for skey, ckey in keysToCopy[1:]:
+        for skey, ckey in keysToCopy:
             s.set(skey, cs.get(ckey))
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -323,12 +328,9 @@ Also includes the PSF model and detection masks.
                         help="display the specified information to stdout and quit (unless run is specified).")
     parser.add_argument("-L", "--loglevel", help="logging level", default="WARN",
                         choices=CaseInsensitiveChoices('DEBUG', 'INFO', 'WARN', 'FATAL'))
-    parser.add_argument("-T", "--trace", nargs="*", action=pbArgparse.TraceLevelAction,
-                        help="trace level for component", metavar="COMPONENT=LEVEL")
-
     parser.add_argument('--debug', '-d', action="store_true", help="Load debug.py?", default=False)
     parser.add_argument('--display', nargs='*', help="Display sources on an image display",
-                        choices=CaseInsensitiveChoices('True', 'showApertures', "showShapes"),
+                        choices=CaseInsensitiveChoices('True', 'showApertures', "showShapes", "showPSFs"),
                         default=None)
     parser.add_argument('--verbose', '-v', action="store_true", help="Be chatty?", default=False)
 
@@ -338,11 +340,6 @@ Also includes the PSF model and detection masks.
     #
     config = ProcessFileConfig()
 
-    config.calibrate.doAstrometry = False
-    config.calibrate.doPhotoCal = False
-    config.calibrate.detection.reEstimateBackground = False
-    config.detection.returnOriginalFootprints=False
-
     #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
     args = argparse.Namespace()
@@ -351,11 +348,10 @@ Also includes the PSF model and detection masks.
     #
     # a straight "--display" is equivalent to "--display True"
     #
-    if args.display is None:              # no --display argument was provided
-        args.display = []
-    elif args.display == []:              # a bare --display with no arguments
-        args.display = ["True"]
-    args.display = [_.upper() for _ in args.display]
+    if args.display is not None:
+        if args.display == []:          # a bare --display with no arguments
+            args.display = ["True"]
+        args.display = [_.upper() for _ in args.display]
 
     try:
         pbArgparse.obeyShowArgument(args.show, args.config, exit=True)
