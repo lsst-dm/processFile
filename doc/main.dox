@@ -12,7 +12,7 @@
 
 processFile.py is built using four LSST Tasks:
 
-- \ref CalibrateTask_ "CalibrateTask"
+- \ref CharacterizeImageTask_ "CharacterizeImageTask"
 - \ref SourceDetectionTask_ "SourceDetectionTask"
 - \ref SourceDeblendTask_ "SourceDeblendTask"
 - \ref SingleFrameMeasurementTask_ "SingleFrameMeasurementTask"
@@ -77,8 +77,28 @@ determiner.
 <dd> logging level (DEBUG, INFO, WARN, FATAL)
 <dt>  --debug, -d
 <dd> Load debug.py?
-<dt> --ds9
-<dd> Display sources on ds9
+<dt> --display [option]
+<dd> Display sources on an image display.
+  Your options are:
+  <dl>
+  <dt> True
+  <dd> The image display code is enabled by the presence of the --display flag, so there's no need to specify
+       True (although it is supported)
+  <dt> showApertures
+  <dd> Show all the apertures measured
+  <dt> showShapes
+  <dd> Show the sources' shapes (as measured using adaptive moments)
+  <dt> showPSFs
+  <dd> Show the sources used to determine the PSF in green; if any are
+       held back for cross-validation they are shown in yellow
+  </dl>
+  The default backend is that provided by lsst.afw.display (currently ds9 if you have display_ds9 setup),
+  but you can override this with a configuration file (<em>i.e.</em> as specified with <tt>-C</tt>)
+  containing a block such as
+  <PRE>
+import lsst.afw.display as afwDisplay
+afwDisplay.setDefaultBackend("firefly")
+  </PRE>
 <dt> --verbose, -v
 <dd> Be chatty?
 </dl>
@@ -86,7 +106,7 @@ determiner.
 For example,
 <pre>
 processFile.py data/cal-53535-i-797722_small_1.fits --outputCat foo.fits --outputCalexp calexp.fits \
-                -c calibrate.initialPsf.pixelScale=0.185 --show config=*initialPsf* run --ds9
+                -c calibrate.initialPsf.pixelScale=0.185 --show config=*initialPsf* run --display
 </pre>
 
 \section processFile_config Configuring processFile.py
@@ -94,7 +114,7 @@ processFile.py data/cal-53535-i-797722_small_1.fits --outputCat foo.fits --outpu
 To return to that example,
 <pre>
 processFile.py data/cal-53535-i-797722_small_1.fits --outputCat foo.fits --outputCalexp calexp.fits \
-                -c calibrate.initialPsf.pixelScale=0.185 --show config=*initialPsf* run --ds9
+                -c calibrate.initialPsf.pixelScale=0.185 --show config=*initialPsf* run --display
 </pre>
 prints
 <pre>
@@ -104,16 +124,13 @@ config.calibrate.initialPsf.fwhm=1.0
 config.calibrate.initialPsf.size=15
 meas.algorithms.psfDeterminer WARNING: You only have 3 eigen images (you asked for 4): reducing number of eigen components
 </pre>
-and displays the processing on \c ds9 (without the \c run it would have stopped after the \c --show command;  you can also have more than one \c config=XXX arguments).
+and displays the processing on an image display (<em>e.g.</em> \c ds9 (without the \c run it would have stopped after the \c --show command;  you can also have more than one \c config=XXX arguments).
 The \c initialPsf is the one used for initial detection and cosmic ray processing (and for measurement too, if
 you specify \c -c \c calibrate.doPsf=False to disable PSF estimation).
 
-Note that the output from \c --show has a "config." prefix that you didn't specify on the command line with \c -c (if you use a configuration file with \c -C, you need to replace \c "config." with \c "root.").  For
-example I've been testing this script with some CFHT data and I'm getting tired of typing the plate scale,
-so:
-<pre>
-processFile.py -C config/cfht.py data/cal-53535-i-797722_small_1.fits --ds9
-</pre>
+Note that the output from \c --show has a "config." prefix that you didn't specify on the command line with \c
+-c.  For example I've been testing this script with some CFHT data and I'm getting tired of typing the plate
+scale, so: <pre> processFile.py -C config/cfht.py data/cal-53535-i-797722_small_1.fits --display </pre>
 (if you omit the \c -C the code will run OK, but with the wrong plate scale it'll guess the seeing incorrectly
 and treat the cores of all the stars as cosmic rays). See also config/minimal.py for other ideas.
 
@@ -125,14 +142,14 @@ to at least guess at all your options for enabling/disabling things.
 
 \section processFile_installation Installing processFile
 
-Any queries or comments should be directed to the <a
-href="https://lists.lsst.org/mailman/listinfo/dm-users">dm-users@lists.lsst.org</a>
-mailing list.
+If you have any queries or comments please ask them on
+<a href="https://community.lsst.org">lsst.community.org</a>.
 
 <hr>
 
-If no-one's done it for you, start by 
-<a href="https://confluence.lsstcorp.org/display/LSWUG/LSST+Software+User+Guide">installing the LSST stack</a>
+If no-one's done it for you, start by installing the LSST stack. Binary installations are described <a
+href="https://sqr-002.lsst.io">here</a>; using the <a href="https://sqr-002.lsst.io/#conda-packages">conda</a>
+installer is probably your best option.
 
 If you checked \c processFile out from git you'll want to say
 <pre>

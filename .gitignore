@@ -6,5 +6,6 @@ bin
 doc/doxygen.conf
 doc/processFile.tag
 doc/html
+doc/xml
 ups/*.cfgc
 python/lsst/processFile/version.py
