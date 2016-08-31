@@ -29,6 +29,7 @@ import tempfile
 
 import unittest
 
+import lsst.afw.table as afwTable
 import lsst.pex.exceptions as pexExcept
 import lsst.utils
 import lsst.utils.tests
@@ -61,11 +62,25 @@ class TestProcessFileRun(unittest.TestCase):
     @unittest.skipIf(testDataDirectory is None, "%s is not available" % testDataPackage)
     @classmethod
     def setUpClass(self):
+        """
+        Define location of test image and temporary outputs and run processFile.
+
+        The fiducial values for expected* values are here as class attributes
+        to provide for easier coherent updating for other test images.  Specifically
+        (a) they're next to the definitions of the file to process
+        (b) it's more clear how to override them and
+            potentially re-use tests across a range of images.
+        """
         dataPath = os.path.join(testDataDirectory, "data")
         testImageFile = "871034p_1_MI.fits"
         testOutputCalexpFile = "871034p_1_MI.calexp.fits"
         testOutputCatalogFile = "871034p_1_MI.src.fits"
         testOutputCalibCatalogFile = "871034p_1_MI.calib.fits"
+
+        self.expectedSizeOfCalexp = 98216640  # bytes
+        self.expectedNumberOfObjects = 250
+        self.expectedNumberOfCalibObjects = 80
+
         self.imageFile = os.path.join(dataPath, testImageFile)
         self.tmpPath = tempfile.mkdtemp()
         self.outputCalexp = os.path.join(self.tmpPath, testOutputCalexpFile)
@@ -94,6 +109,35 @@ class TestProcessFileRun(unittest.TestCase):
 
     def testCalibCatalogNonEmpty(self):
         self.assertFileNotEmpty(self.outputCalibCatalog)
+
+    def testCatalogHasReasonableNumberOfSources(self):
+        """Does the catalog have a reasonable number of sources.
+
+        Check that the catalog size is within 50% and 200% of expectedNumberOfObjects.
+        """
+        src = afwTable.SourceCatalog.readFits(self.outputCatalog)
+        sizeOfCatalog = len(src)
+        self.assertGreater(sizeOfCatalog, 0.50*self.expectedNumberOfObjects)
+        self.assertLess(sizeOfCatalog, 2.00*self.expectedNumberOfObjects)
+
+    def testCalibCatalogHasReasonableNumberOfSources(self):
+        """Does the catalog have a reasonable number of sources.
+
+        Check that the catalog of calibration sources is within 50% and 200% of expectedNumberOfObjects.
+        """
+        src = afwTable.SourceCatalog.readFits(self.outputCalibCatalog)
+        sizeOfCatalog = len(src)
+        self.assertGreater(sizeOfCatalog, 0.50*self.expectedNumberOfCalibObjects)
+        self.assertLess(sizeOfCatalog, 2.00*self.expectedNumberOfCalibObjects)
+
+    def testImageHasReasonableSize(self):  # bytes
+        """Does the output image have a reasonable size (unit is bytes).
+
+        Check that the output image size is within 80% - 120% of expected size.
+        """
+        sizeOfImage = os.path.getsize(self.outputCalexp)  # bytes
+        self.assertGreater(sizeOfImage, 0.80*self.expectedSizeOfCalexp)
+        self.assertLess(sizeOfImage, 1.20*self.expectedSizeOfCalexp)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
