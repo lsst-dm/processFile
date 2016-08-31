@@ -29,9 +29,9 @@ import tempfile
 
 import unittest
 
+import lsst.pex.exceptions as pexExcept
 import lsst.utils
 import lsst.utils.tests
-import lsst.pex.exceptions as pexExcept
 
 testDataPackage = "afwdata"
 try:
