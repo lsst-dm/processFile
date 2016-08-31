@@ -1,4 +1,6 @@
 setupRequired(pipe_tasks)
 
+setupOptional(afwdata)
+
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
 envPrepend(PATH, ${PRODUCT_DIR}/bin)
